@@ -46,7 +46,7 @@
 | Z right | Driver E1, uart P1.1 | Independent, Z_TILT |
 | Extruder (BIQU H2 V2S) | Driver E0, uart P1.4 | 0.80 A |
 | Hotend heater / thermistor | P2.7 / P0.24 | 65 W, Generic 3950 |
-| Bed heater / thermistor | P2.5 / P0.25 | `pwm_cycle_time: 0.01666` → **AC bed via SSR** (assumed) |
+| Bed heater / thermistor | P2.5 / P0.25 | **24 V DC bed via external MOSFET module** (confirmed) |
 | BLTouch clone | sensor ^P0.10, control P2.0 | |
 | Part cooling (dual 5015) | P2.3 | |
 | Hotend heatsink fan | P2.4 (HE1 used as fan) | |
@@ -55,7 +55,7 @@
 | Neopixel ring (16 LED) | P1.24 | |
 | SFS v2 runout switch | ^P1.25 | |
 | SFS v2 motion encoder | ^P1.26 | Currently disabled |
-| Power-loss detect | ^P1.0 (PWRDET) | Module type unknown — **need to confirm** |
+| Power-loss detect | ^P1.0 (PWRDET) | **No device fitted** (confirmed) — `[gcode_button power_loss_detect]` will be dropped |
 | LIS2DW accelerometers ×2 | USB RP2040 (separate MCUs) | Unaffected by board swap |
 
 ---
@@ -74,12 +74,12 @@
 | *spare (shares EN with extruder)* | Driver7 (E4) | STEP PD13, DIR PD12, EN !PB6, UART PD11 | Also the MAX31865 pins |
 | Hotend heater | HE0 | PB1 | |
 | Hotend thermistor | TH0 | PC1 | |
-| Bed SSR control | H-BED | PB10 | Board MOSFET drives SSR input (DC side) |
+| Bed MOSFET module signal | H-BED | PB10 | Board output drives the external MOSFET module's signal input; bed current stays off the board |
 | Bed thermistor | TB | PC0 | |
 | Part cooling | FAN0 | PA2 | Fan voltage jumper → match fans (VIN for 24 V) |
 | Hotend heatsink fan | FAN1 | PA1 | Same |
 | Electronics fan | FAN2 | PA0 | Driven by MCU temp (no extra thermistor needed) |
-| PSU fan 1 / 2 | HE1 / HE2 | PB0 / PA3 | **VIN only (24 V fans required)** — or move to always-on outputs |
+| PSU fan 1 / 2 | HE1 / HE2 | PB0 / PA3 | VIN (24 V) — matches your 24 V fans; controlled, not always-on |
 | X endstop | X- | PA14 | |
 | Y endstop | Y- | PA15 | |
 | BLTouch probe signal | Z- | PB13 | 5 V-only port, perfect for BLTouch |
@@ -87,7 +87,6 @@
 | SFS runout switch | MT_DET | PA13 | 5 V port |
 | SFS motion encoder | Z+ | PB12 | **Z+ power jumper MUST be on 5 V** |
 | Neopixel ring | Neopixel header | PC5 | 5 V supply — check ring current (16 LEDs at your 25–30 % = fine) |
-| Power-loss detect | EXP1/EXP2 spare pin (no LCD fitted) | TBD | Depends on module — confirm first |
 | Spare thermistors | TH1 / TH2 | PC2 / PC3 | Chamber temp, PSU temp |
 
 ---
@@ -99,25 +98,29 @@ Ranked by value-for-effort. Items marked **(decision)** need your call before co
 | # | Upgrade | Value | Cost / risk | My take |
 |---|---|---|---|---|
 | 1 | **Use the MCU's internal temp sensor** (`temperature_mcu`) for the electronics fan | Removes a thermistor + wire | None | Do it |
-| 2 | **Thermostatic PSU fans**: thermistor taped in the PSU on TH2 → `temperature_fan` on HE1/HE2 | Fans only run when needed; quieter | Need 24 V fans (heater outputs are VIN only) | Do it if PSU fans are 24 V **(decision)** |
+| 2 | **Controlled PSU fans** on HE1/HE2: thermostatic (thermistor in PSU on TH2) or `controller_fan` (on while steppers/heaters active) | Fans only run when needed; quieter | Fans are 24 V — compatible | Do it — method still to pick **(decision)** |
 | 3 | **Chamber/ambient sensor on TH1** | Useful data, nice for ABS/ASA | One thermistor | Optional |
-| 4 | **CAN toolhead board** (e.g. BTT EBB36 / EBB SB2209, MKS THR36) using the Monster8 as a USB→CAN bridge | 4-wire umbilical instead of ~15 wires through the X carriage; toolhead accelerometer can **replace the `lis_hotend` RP2040**; frees mainboard ports | Extra board purchase; more firmware steps; CAN is unforgiving of bad termination/wiring | Best upgrade on the list *because the printer is already stripped* — but optional **(decision)** |
+| 4 | **CAN toolhead board** (e.g. BTT EBB36 / EBB SB2209, MKS THR36) using the Monster8 as a USB→CAN bridge | 4-wire umbilical; toolhead accelerometer could replace the `lis_hotend` RP2040 | Extra purchase; more firmware steps | **Not now** (no CAN board owned) — future upgrade path; CAN/I2C jumper stays on I2C |
 | 5 | **32 microsteps** with `interpolate: True` | Smoother/quieter motion; F407 has headroom | Halves max speed headroom vs 16; verify no "Timer too close" | Bring-up on 16, test 32 later |
 | 6 | Katapult bootloader | Future flashes over USB/CAN, no SD-card shuffling | Overwrites MKS stock bootloader via DFU; small brick risk | Optional, after the board is proven |
 | 7 | Sensorless homing (DIAG jumpers) | Fewer switches | Less repeatable on a heavy Y bed; conflicts with mechanical switches on the same pins | **Skip** — keep mechanical endstops |
 | 8 | MAX31865 / PT1000 hotend sensor | > 300 °C capability | Burns Driver7 | Skip unless you go high-temp |
-| 9 | Power the Pi from the board's 5 V 3 A rail | One less PSU | Pi 4 + KlipperScreen can exceed 3 A → undervoltage throttling; Pi 5 definitely too much | Use a dedicated 5 V supply for the Pi |
+| 9 | Power the Pi from the board's 5 V 3 A rail | One less PSU | Pi 4 + KlipperScreen can exceed 3 A → undervoltage throttling | **Not used** — both Pi 4Bs (Klipper + webcam) already have proper supplies |
 
 ---
 
 ## 5. Setup strategy (phased — do not skip ahead)
 
-### Phase 0 — Decisions (blockers)
-1. CAN toolhead board: yes / no?
-2. PSU fans: 24 V? Thermostatic (§4 #2) or always-on?
-3. Power-loss module: which product, and what voltage is its signal output?
-4. Raspberry Pi model + how it is powered.
-5. Confirm bed is AC via SSR (config implies yes).
+### Phase 0 — Decisions (answered)
+| Question | Answer | Effect on plan |
+|---|---|---|
+| CAN toolhead board? | No | Plain USB firmware; CAN/I2C jumper stays on I2C |
+| Fan voltage | All 24 V | Every fan-voltage jumper → **VIN**; heater outputs usable for fans |
+| Fan control preference | Controlled, not always-on | Always-on outputs unused; PSU fans on HE1/HE2 under Klipper control |
+| Power-loss device | None | Drop `[gcode_button power_loss_detect]` |
+| Pi | 2× Pi 4B (Klipper + webcam), own PSUs | Board 5 V Pi output unused |
+| Bed | 24 V DC via external MOSFET module | H-BED output drives the module signal input |
+| **Open:** PSU fan control method | — | Thermostatic (thermistor in PSU on TH2) vs. "on while printer is active" (`controller_fan`) |
 
 ### Phase 1 — Bench prep (board out of the printer)
 | Step | Setting | Why |
@@ -143,7 +146,7 @@ Verify with `ls /dev/serial/by-id/` → expect `usb-Klipper_stm32f407xx_<id>-if0
 
 ### Phase 3 — Config rewrite
 - New `[mcu]` serial; drop `restart_method: command` (LPC-specific habit).
-- Re-pin `printer.cfg`, `fans.cfg`, `sfs.cfg`, `neopixel_ring_unified.cfg`, power-loss button.
+- Re-pin `printer.cfg`, `fans.cfg`, `sfs.cfg`, `neopixel_ring_unified.cfg`; remove the power-loss `gcode_button`.
 - Macros (`core_macros.cfg`, `mainsail_include.cfg`, etc.) are pin-free and carry over unchanged.
 - Clear the `SAVE_CONFIG` block values that no longer hold (see Phase 5).
 
@@ -177,7 +180,6 @@ Verify with `ls /dev/serial/by-id/` → expect `usb-Klipper_stm32f407xx_<id>-if0
 | Fan jumper voltage mismatch | Medium — dead fans | Verify each fan's rating |
 | Z motor placed on Driver7 | Medium — shares EN with extruder | Map per §3 |
 | Using Driver2's second plug for Z right | High — breaks Z_TILT | Use Driver4 for Z right |
-| Pi on board 5 V rail | Medium — brownouts, SD corruption | Dedicated Pi supply |
 | SD flash filename ambiguity | Low | Try `mks_monster8.bin`, then `firmware.bin`, then DFU |
 | Community CAN guides for this board are inconsistent | Medium (CAN route only) | Follow Klipper's official CANBUS docs; PB8/PB9 only |
 | MKS QC variance | Low–Medium | Bench test in Phase 1 before installing |
