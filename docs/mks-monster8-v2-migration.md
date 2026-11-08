@@ -79,7 +79,7 @@
 | Part cooling | FAN0 | PA2 | Fan voltage jumper → match fans (VIN for 24 V) |
 | Hotend heatsink fan | FAN1 | PA1 | Same |
 | Electronics fan | FAN2 | PA0 | Driven by MCU temp (no extra thermistor needed) |
-| PSU fan 1 / 2 | HE1 / HE2 | PB0 / PA3 | VIN (24 V) — matches your 24 V fans; controlled, not always-on |
+| PSU fan 1 / 2 | HE1 / HE2 | PB0 / PA3 | VIN (24 V); both driven together by one `temperature_fan` via `[multi_pin]` |
 | X endstop | X- | PA14 | |
 | Y endstop | Y- | PA15 | |
 | BLTouch probe signal | Z- | PB13 | 5 V-only port, perfect for BLTouch |
@@ -87,7 +87,8 @@
 | SFS runout switch | MT_DET | PA13 | 5 V port |
 | SFS motion encoder | Z+ | PB12 | **Z+ power jumper MUST be on 5 V** |
 | Neopixel ring | Neopixel header | PC5 | 5 V supply — check ring current (16 LEDs at your 25–30 % = fine) |
-| Spare thermistors | TH1 / TH2 | PC2 / PC3 | Chamber temp, PSU temp |
+| PSU thermistor | TH2 | PC3 | Mounted on PSU output-side heatsink (see risks) |
+| *spare* thermistor | TH1 | PC2 | Chamber/ambient later |
 
 ---
 
@@ -98,7 +99,7 @@ Ranked by value-for-effort. Items marked **(decision)** need your call before co
 | # | Upgrade | Value | Cost / risk | My take |
 |---|---|---|---|---|
 | 1 | **Use the MCU's internal temp sensor** (`temperature_mcu`) for the electronics fan | Removes a thermistor + wire | None | Do it |
-| 2 | **Controlled PSU fans** on HE1/HE2: thermostatic (thermistor in PSU on TH2) or `controller_fan` (on while steppers/heaters active) | Fans only run when needed; quieter | Fans are 24 V — compatible | Do it — method still to pick **(decision)** |
+| 2 | **Thermostatic PSU fans**: thermistor inside the PSU on TH2 → one `temperature_fan` driving HE1 + HE2 together via `[multi_pin]` | Fans only run when the PSU is warm; PSU temp graph in Mainsail | Thermistor must go on the **low-voltage (output) side** of the PSU | **Chosen** |
 | 3 | **Chamber/ambient sensor on TH1** | Useful data, nice for ABS/ASA | One thermistor | Optional |
 | 4 | **CAN toolhead board** (e.g. BTT EBB36 / EBB SB2209, MKS THR36) using the Monster8 as a USB→CAN bridge | 4-wire umbilical; toolhead accelerometer could replace the `lis_hotend` RP2040 | Extra purchase; more firmware steps | **Not now** (no CAN board owned) — future upgrade path; CAN/I2C jumper stays on I2C |
 | 5 | **32 microsteps** with `interpolate: True` | Smoother/quieter motion; F407 has headroom | Halves max speed headroom vs 16; verify no "Timer too close" | Bring-up on 16, test 32 later |
@@ -120,7 +121,7 @@ Ranked by value-for-effort. Items marked **(decision)** need your call before co
 | Power-loss device | None | Drop `[gcode_button power_loss_detect]` |
 | Pi | 2× Pi 4B (Klipper + webcam), own PSUs | Board 5 V Pi output unused |
 | Bed | 24 V DC via external MOSFET module | H-BED output drives the module signal input |
-| **Open:** PSU fan control method | — | Thermostatic (thermistor in PSU on TH2) vs. "on while printer is active" (`controller_fan`) |
+| PSU fan control | Thermostatic (spare thermistors on hand) | Thermistor in PSU → TH2 (PC3); `[multi_pin psu_fans]` = PB0 + PA3; one `temperature_fan` |
 
 ### Phase 1 — Bench prep (board out of the printer)
 | Step | Setting | Why |
@@ -183,3 +184,4 @@ Verify with `ls /dev/serial/by-id/` → expect `usb-Klipper_stm32f407xx_<id>-if0
 | SD flash filename ambiguity | Low | Try `mks_monster8.bin`, then `firmware.bin`, then DFU |
 | Community CAN guides for this board are inconsistent | Medium (CAN route only) | Follow Klipper's official CANBUS docs; PB8/PB9 only |
 | MKS QC variance | Low–Medium | Bench test in Phase 1 before installing |
+| PSU thermistor touching a **primary-side** heatsink (can sit at mains voltage) | **High — mains onto board ground** | Mount on the output-side rectifier heatsink or in the airflow only; Kapton-wrap; route wire away from mains terminals; unplug and wait before opening |
